@@ -5,13 +5,16 @@
 #include "GeoReferencingSystem.h"
 #include "Kismet/GameplayStatics.h"
 
-#include "Engine/Selection.h"
-#include "Editor/LevelEditor/Public/LevelEditor.h"
-#include "Modules/ModuleManager.h"
-#include "Engine/AssetManager.h"
+#if WITH_EDITOR
+//#include "Engine/Selection.h"
+//#include "Modules/ModuleManager.h"
+//#include "Engine/AssetManager.h"
 #include "EditorViewportClient.h"
+#endif //WITH_EDITOR
 
+#ifdef WINDOWS
 #include <windows.h>
+#endif //WINDOWS
 
 // Sets default values
 ABtOceanSphereActor::ABtOceanSphereActor()
@@ -27,7 +30,11 @@ ABtOceanSphereActor::ABtOceanSphereActor()
 
 
     //static FString Path = TEXT("/Game/M_Water");
-    static FString Path = TEXT("/Game/BtC4i3D/Materials/WaterMaterials/Materials/M_Water_Opaque");
+    //static FString Path = TEXT("/Game/BtC4i3D/Materials/WaterMaterials/Materials/M_Water_Opaque");
+    
+    static FString Path = TEXT("/Game/M_Reflection_Test");
+    //static FString Path = TEXT("/Game/M_Water");
+
     //static FString Path = TEXT("/DataSmithContent/Materials/Water/M_Water");
     //static FString Path = TEXT("/Engine/EngineDebugMaterials/WireframeMaterial");
 
@@ -47,13 +54,13 @@ ABtOceanSphereActor::ABtOceanSphereActor()
     }
     ColorMaterial = MaterialLoader2.Object;
 
-#if WITH_EDITOR
-    // Broadcast whenever the editor selection changes (viewport or world outliner)
-    //USelection::SelectionChangedEvent.AddUObject(this, &ABtOceanSphereActor::OnSelectionChanged);
 
-    //FLevelEditorModule& levelEditor = FModuleManager::GetModuleChecked(FName(TEXT("LevelEditor")));
-    //levelEditor.OnActorSelectionChanged().AddUObject(this, &ABtOceanSphereActor::HandleOnActorSelectionChanged);
-#endif
+    static FString PathTexture = TEXT("/Game/8081_earthspec2k.8081_earthspec2k");
+    static ConstructorHelpers::FObjectFinder<UTexture2D> TextureLoader(*PathTexture);
+    if (!TextureLoader.Succeeded()) {
+        UE_LOG(LogTemp, Error, TEXT("Failed to load height texture at path: %s"), *PathTexture);
+    }
+    HeightTexture = TextureLoader.Object;
 }
 
 void ABtOceanSphereActor::OnConstruction(const FTransform& Transform)
@@ -62,35 +69,43 @@ void ABtOceanSphereActor::OnConstruction(const FTransform& Transform)
 
     if (GeoRef == nullptr) {
         GeoRef = AGeoReferencingSystem::GetGeoReferencingSystem(GetWorld());
+
+        LoadHeightTexture();
+
+        build();
+
+        build_test();
+
+        update_origin(0);
     }
-
-    build();
-
-    build_test();
-
-    update_origin(0);
-
-    //is_check_geo_coord = true;
-    //check_geo_coords();
 }
 
 // Called when the game starts or when spawned
 void ABtOceanSphereActor::BeginPlay()
 {
     Super::BeginPlay();
-
-    if (GeoRef == nullptr) {
-        GeoRef = AGeoReferencingSystem::GetGeoReferencingSystem(GetWorld());
-    }
-
-    build();
 }
 
 // Called every frame
 void ABtOceanSphereActor::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
+
+    if (GeoRef == nullptr) {
+        GeoRef = AGeoReferencingSystem::GetGeoReferencingSystem(GetWorld());
+
+        LoadHeightTexture();
+
+        build();
+
+        build_test();
+
+        update_origin(0);
+    }
+
+    //is_check_geo_coord = true;
+    //check_geo_coords();
+
     update_view(0);
 }
 
@@ -104,12 +119,38 @@ void ABtOceanSphereActor::TestUpdate()
     update_view(0);
 }
 
-#if WITH_EDITOR
-void ABtOceanSphereActor::OnSelectionChanged(UObject* NewSelection)
+void ABtOceanSphereActor::LoadHeightTexture()
 {
+    if (HeightTexture) {
+        /*
+            Mip Gen Settings : NoMipmaps
+            sRGB : false
+            Compression Settings : TC Vector Displacementmap
+        */
 
+        auto& Mips = HeightTexture->GetPlatformMips();
+    
+        if (Mips.Num() > 0) {
+            auto& MipData = (FTexture2DMipMap&) Mips[0];
+            ElevDataSize = { MipData.SizeX, MipData.SizeY };
+            ElevData.SetNumUninitialized(MipData.SizeX * MipData.SizeY);
+
+            TArray<FColor> PixelData;
+            PixelData.SetNumUninitialized(MipData.SizeX * MipData.SizeY);
+
+            const FColor* Pixels = static_cast<const FColor*>(MipData.BulkData.LockReadOnly());
+
+            for (uint32 v = 0; v < MipData.SizeY; ++v) {
+                for (uint32 h = 0; h < MipData.SizeX; ++h) {
+                    auto& Pixel = Pixels[v * MipData.SizeX + h];
+                    ElevData[v * MipData.SizeX + h] = 255 - Pixel.R;
+                }
+            }
+
+            MipData.BulkData.Unlock();
+        }
+    }
 }
-#endif
 
 #if WITH_EDITOR
 bool ABtOceanSphereActor::ShouldTickIfViewportsOnly() const
@@ -231,7 +272,7 @@ struct SphereBuilder {
 
     static const int32      VERT_STEP = 18;
     static const int32      HORZ_STEP = 36;
-    static const int32      TILE_STEP = 5;
+    static const int32      TILE_STEP = 6;
 
 
     struct SphereSection;
@@ -254,8 +295,8 @@ struct SphereBuilder {
         for (int32 v = 0; v <= VERT_STEP; ++v) {    // [90, -90]
             double AngleVert = 90.0 - (v * 180.0) / VERT_STEP;
 
-            for (int32 h = 0; h <= HORZ_STEP; ++h) {    // [0, 360]
-                double AngleHorz = (h * 360.0) / HORZ_STEP;
+            for (int32 h = 0; h <= HORZ_STEP; ++h) {    // [-180, 180]
+                double AngleHorz = -180.0 + (h * 360.0) / HORZ_STEP;
 
                 GeoCoords[GET_INDEX(v, h)] = {AngleVert, AngleHorz};
             }
@@ -276,9 +317,8 @@ struct SphereBuilder {
             }
         }
 
-
-        const int32 VERT_STRIDE = VERT_STEP * TILE_STEP;
-        const int32 HORZ_STRIDE = HORZ_STEP * TILE_STEP;
+        static const int32 VERT_STRIDE = VERT_STEP * TILE_STEP;
+        static const int32 HORZ_STRIDE = HORZ_STEP * TILE_STEP;
 
         MinLatitudeDiff = 180.0 / VERT_STRIDE;
         MinLongitudeDiff = 360.0 / HORZ_STRIDE;
@@ -308,6 +348,29 @@ struct SphereBuilder {
         }
     }
 
+    void Elev_Tiles(uint32 Width, uint32 Height, uint8* ElevData)
+    {
+        static const uint32 VERT_STRIDE = VERT_STEP * TILE_STEP;
+        static const uint32 HORZ_STRIDE = HORZ_STEP * TILE_STEP;
+
+        for (uint32 v = 0; v < VERT_STRIDE; ++v) {
+            for (uint32 h = 0; h < HORZ_STRIDE; ++h) {
+                uint32 TileIndex = v * HORZ_STRIDE + h;
+                auto& Tile = Tiles[TileIndex];
+
+                double th = (Tile.LonMin + Tile.LonMax) * 0.5;
+                double tv = (Tile.LatMin + Tile.LatMax) * 0.5;
+                th = fmod(th + 180.0, 360.0) / 360.0;
+                tv = fmod(-tv + 90.0, 180.0) / 180.0;
+
+                uint32 ElevIndexHorz = th * Width;
+                uint32 ElevIndexVert = tv * Height;
+                uint8 ElevValue = ElevData[ElevIndexVert * Width + ElevIndexHorz];
+                Tile.IsOcean = (ElevValue < 5);
+            }
+        }
+    }
+
     double NormalizeLongitude(double heading) {
         return fmod((heading + 180.0), 360.0) - 180.0;    // Normalize heading to [-180, 180]
     }
@@ -319,6 +382,7 @@ struct SphereBuilder {
         }
         return heading;
     }
+
     double NormalizePitch(double pitch) {
         // Step 1: Normalize to the range [-180, 180]
         pitch = fmod(pitch + 180.0, 360.0);
@@ -355,13 +419,13 @@ struct SphereBuilder {
         ViewLongitude = ViewLon;
         ViewAltitude = ViewAlt;
 
-        UE_LOG(LogTemp, Log, TEXT("ViewLLA: %f %f %f"), ViewLat, ViewLon, ViewAlt);
+        //UE_LOG(LogTemp, Log, TEXT("ViewLLA: %f %f %f"), ViewLat, ViewLon, ViewAlt);
 
+        const double alphaH = (ViewLongitude + 180.0) / 360.0;
         const double alphaV = (90.0 - ViewLatitude) / 180.0;
-        const double alphaH = (ViewLongitude) / 360.0;
 
-        const int32 viewV = alphaV * VERT_STRIDE;
         const int32 viewH = alphaH * HORZ_STRIDE;
+        const int32 viewV = alphaV * VERT_STRIDE;
 
         int32 offset = 5;
         int32 MaxLevel = 5;
@@ -405,10 +469,11 @@ struct SphereBuilder {
     };
 
     struct SphereTile {
-        double MinVert{ 0.0 }, MaxVert{ 0.0 };
-        double MinHorz{ 0.0 }, MaxHorz{ 0.0 };
+        double LatMin{ 0.0 }, LatMax{ 0.0 };
+        double LonMin{ 0.0 }, LonMax{ 0.0 };
                 
         int32 Level{ 1 };
+        bool IsOcean{ false };
         SphereSection* Section{ nullptr };
 
         enum SideEnum {
@@ -419,12 +484,12 @@ struct SphereBuilder {
         };
         SphereTile* SideTiles[4] = { nullptr, nullptr, nullptr, nullptr };
 
-        void Build(double minVert, double maxVert, double minHorz, double maxHorz, SphereBuilder& SB) 
+        void Build(double latMin, double latMax, double lonMin, double lonMax)
         {
-             MinVert = minVert;
-             MaxVert = maxVert;
-             MinHorz = minHorz;
-             MaxHorz = maxHorz;
+             LatMin = latMin;
+             LatMax = latMax;
+             LonMin = lonMin;
+             LonMax = lonMax;
         }
 
         void GenerateMesh(SectionMesh& Mesh, SphereBuilder& SB) 
@@ -440,11 +505,11 @@ struct SphereBuilder {
 
             for (int32 v = 0; v <= Level; ++v) {
                 AlphaV = v / dLevel;
-                AngleVert = MaxVert * (1-AlphaV) + MinVert * AlphaV;
+                AngleVert = LatMax * (1-AlphaV) + LatMin * AlphaV;
 
                 for (int32 h = 0; h <= Level; ++h) {
                     AlphaH = h / dLevel;
-                    AngleHorz = MinHorz * (1-AlphaH) + MaxHorz * AlphaH;
+                    AngleHorz = LonMin * (1-AlphaH) + LonMax * AlphaH;
 
                     LLA_TO_ECEF(AngleVert, AngleHorz, SB.OceanHeight, &Ecef.X, &Ecef.Y, &Ecef.Z);
                     ECEF_TO_UNREAL(Ecef);
@@ -513,12 +578,12 @@ struct SphereBuilder {
     };
 
     struct SphereSection {
-        void Build(double minVert, double maxVert, double minHorz, double maxHorz, SphereBuilder& SB) 
+        void Build(double latMin, double latMax, double lonMin, double lonMax, SphereBuilder& SB)
         {
-            MinVert = minVert;
-            MaxVert = maxVert;
-            MinHorz = minHorz;
-            MaxHorz = maxHorz;
+            LatMin = latMin;
+            LatMax = latMax;
+            LonMin = lonMin;
+            LonMax = lonMax;
               
             TilePtrs.SetNum(TILE_STEP * TILE_STEP);
 
@@ -539,12 +604,12 @@ struct SphereBuilder {
                     double alphaH0 = h / dTILE_STEP;
                     double alphaH1 = (h+1) / dTILE_STEP;
 
-                    double V0 = maxVert * (1-alphaV0) + minVert * alphaV0;
-                    double V1 = maxVert * (1-alphaV1) + minVert * alphaV1;
-                    double H0 = minHorz * (1-alphaH0) + maxHorz * alphaH0;
-                    double H1 = minHorz * (1-alphaH1) + maxHorz * alphaH1;
+                    double V0 = LatMax * (1-alphaV0) + LatMin * alphaV0;
+                    double V1 = LatMax * (1-alphaV1) + LatMin * alphaV1;
+                    double H0 = LonMin * (1-alphaH0) + LonMax * alphaH0;
+                    double H1 = LonMin * (1-alphaH1) + LonMax * alphaH1;
 
-                    Tile.Build(V0, V1, H0, H1, SB);
+                    Tile.Build(V0, V1, H0, H1);
                 }
             }
         }
@@ -554,14 +619,15 @@ struct SphereBuilder {
             if (!NeedUpdate)
                 return;
 
-            auto& Mesh = SB.StaticMesh;
+            auto& Mesh = SB.BufferMesh ;
             Mesh.Vertices.SetNumUninitialized(0, false);
             Mesh.Triangles.SetNumUninitialized(0, false);
             Mesh.Normals.SetNumUninitialized(0, false);
             Mesh.TexCoords.SetNumUninitialized(0, false);
 
             for (auto Tile : TilePtrs) {
-                Tile->GenerateMesh(Mesh, SB);
+                if (Tile->IsOcean)
+                    Tile->GenerateMesh(Mesh, SB);
             }
 
             SB.OceanMesh->CreateMeshSection(SectionIndex, Mesh.Vertices, Mesh.Triangles, Mesh.Normals, Mesh.TexCoords, {}, {}, false);
@@ -570,8 +636,8 @@ struct SphereBuilder {
             NeedUpdate = false;
         }
 
-        double MinVert{ 0.0 }, MaxVert{ 0.0 };
-        double MinHorz{ 0.0 }, MaxHorz{ 0.0 };
+        double LatMin{ 0.0 }, LatMax{ 0.0 };
+        double LonMin{ 0.0 }, LonMax{ 0.0 };
 
         int32 VertIndex{ 0 };
         int32 HorzIndex{ 0 };
@@ -597,7 +663,7 @@ public:
     TArray<SphereSection>   Sections;
     TArray<SphereTile>      Tiles;
 
-    SectionMesh             StaticMesh;
+    SectionMesh             BufferMesh ;
 };
 
 void ABtOceanSphereActor::build()
@@ -608,6 +674,8 @@ void ABtOceanSphereActor::build()
     SB->EarthMaterial = EarthMaterial;
 
     SB->Build_Tiles();
+
+    SB->Elev_Tiles(ElevDataSize.Width, ElevDataSize.Height, ElevData.GetData());
 
     SB->UpdateTileLevels(TestLatitude, TestLongitude, 0);
 
@@ -846,7 +914,7 @@ void ABtOceanSphereActor::update_origin(float DeltaTime)
         UE_LOG(LogTemp, Warning, TEXT("ECEF  %f %f %f to LLA: %f %f %f"), X, Y, Z, ViewLat, ViewLon, ViewAlt);
     }
 
-    if (1) {
+    if (0) {
 
         FVector CameraLocation = { -249582.787664, 8056040.100924, -4078010.822198 };
 
@@ -915,6 +983,7 @@ void ABtOceanSphereActor::update_view(float DeltaTime)
             return;
     }
     else {
+#if WITH_EDITOR
         FViewport* activeViewport = GEditor->GetActiveViewport();
         if (!activeViewport)
             return;
@@ -929,6 +998,7 @@ void ABtOceanSphereActor::update_view(float DeltaTime)
         CameraLocation = viewPos;
 
         //UE_LOG(LogTemp, Warning, TEXT("Camera %s"), *CameraLocation.ToString());
+#endif  //WITH_EDITOR
     }
 
 
@@ -971,6 +1041,7 @@ void ABtOceanSphereActor::update_view(float DeltaTime)
             Section.GenerateMesh(*SB);
         }
 
+#ifdef WINDOWS
         if (GetKeyState(VK_SPACE) & 0x8000) {
             FString LogText = FString::Printf(TEXT("ECEF  %f %f %f to LLA: %f %f %f"), ViewECEF.X, ViewECEF.Y, ViewECEF.Z, ViewLat, ViewLon, ViewAlt);
             UE_LOG(LogTemp, Warning, TEXT("%s"), *LogText);
@@ -979,9 +1050,11 @@ void ABtOceanSphereActor::update_view(float DeltaTime)
 
             build_test_view(ViewLat, ViewLon, ViewAlt);
         }
+#endif  //WINDOWS
     }
 }
 
+#ifdef WINDOWS
 class MyThread : public FRunnable {
 public:
     FRunnableThread* Thread{ nullptr };
@@ -1053,8 +1126,7 @@ public:
         bStopThread = true;
     }
 };
-
-
+#endif  //WINDOWS
 
 #include <cstdio>
 #include <fstream>

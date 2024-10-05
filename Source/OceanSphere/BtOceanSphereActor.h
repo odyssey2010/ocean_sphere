@@ -29,6 +29,8 @@ protected:
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
+	
+	void LoadHeightTexture();
 
 #if WITH_EDITOR
 	/** If true, actor is ticked even if TickType==LEVELTICK_ViewportsOnly	 */
@@ -60,6 +62,9 @@ public:
 	UMaterial* ColorMaterial{ nullptr };
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ocean")
+	UTexture2D* HeightTexture{ nullptr };
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ocean")
 	double TestLatitude{ 0 };
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ocean")
@@ -71,14 +76,13 @@ public:
 
 	UFUNCTION(CallInEditor, Category = "Ocean")
 	void TestUpdate();
-
-#if WITH_EDITOR
-	void OnSelectionChanged(UObject* NewSelection);
-#endif
-
+	
 	AGeoReferencingSystem* GeoRef{ nullptr };
 
 	SphereBuilder* SB{ nullptr };
+
+	struct { uint16 Width, Height; } ElevDataSize;
+	TArray<uint8> ElevData;
 
 	bool is_check_geo_coord = false;
 
