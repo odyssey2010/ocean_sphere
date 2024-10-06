@@ -32,8 +32,9 @@ ABtOceanSphereActor::ABtOceanSphereActor()
     //static FString Path = TEXT("/Game/M_Water");
     //static FString Path = TEXT("/Game/BtC4i3D/Materials/WaterMaterials/Materials/M_Water_Opaque");
     
-    static FString Path = TEXT("/Game/M_Reflection_Test");
+    //static FString Path = TEXT("/Game/M_Reflection_Test");
     //static FString Path = TEXT("/Game/M_Water");
+    static FString Path = TEXT("/Game/M_EarthMap");
 
     //static FString Path = TEXT("/DataSmithContent/Materials/Water/M_Water");
     //static FString Path = TEXT("/Engine/EngineDebugMaterials/WireframeMaterial");
@@ -626,7 +627,7 @@ struct SphereBuilder {
             Mesh.TexCoords.SetNumUninitialized(0, false);
 
             for (auto Tile : TilePtrs) {
-                if (Tile->IsOcean)
+                //if (Tile->IsOcean)
                     Tile->GenerateMesh(Mesh, SB);
             }
 
@@ -897,7 +898,7 @@ void ABtOceanSphereActor::update_origin(float DeltaTime)
     T.SetFromMatrix(M_inv);
 
     SetActorLocation({ 0.0, 0.0, 0.0 });
-    SetActorRotation({ 0.0, 180.0, 0.0 });
+    SetActorRotation({ 0.0, 0.0, 0.0 });
     OceanMesh->SetRelativeTransform(T);
 
     if (0) {
