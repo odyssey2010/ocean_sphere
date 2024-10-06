@@ -32,9 +32,9 @@ ABtOceanSphereActor::ABtOceanSphereActor()
     //static FString Path = TEXT("/Game/M_Water");
     //static FString Path = TEXT("/Game/BtC4i3D/Materials/WaterMaterials/Materials/M_Water_Opaque");
     
-    //static FString Path = TEXT("/Game/M_Reflection_Test");
+    static FString Path = TEXT("/Game/M_Reflection_Test");
     //static FString Path = TEXT("/Game/M_Water");
-    static FString Path = TEXT("/Game/M_EarthMap");
+    //static FString Path = TEXT("/Game/M_EarthMap");
 
     //static FString Path = TEXT("/DataSmithContent/Materials/Water/M_Water");
     //static FString Path = TEXT("/Engine/EngineDebugMaterials/WireframeMaterial");
